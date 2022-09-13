@@ -60,6 +60,7 @@ export class SecurityPlaygroundFargateStack extends cdk.Stack {
     if (this.node.tryGetContext('sysdig_etc_shadow_healthcheck') == "true") {
       fargateService.targetGroup.configureHealthCheck({
         path: "/etc/shadow",
+        interval: cdk.Duration.minutes(5),
       });
     }
     // Otherwise we'll hit the 'normal' healthcheck endpoint
@@ -109,6 +110,7 @@ export class SecurityPlaygroundManualInstrumentationFargateStack extends cdk.Sta
     if (this.node.tryGetContext('sysdig_shadow_shadow_healthcheck') == "true") {
       fargateService.targetGroup.configureHealthCheck({
         path: "/etc/shadow",
+        interval: cdk.Duration.minutes(5),
       });
     }
     // Otherwise we'll hit the 'normal' healthcheck endpoint
