@@ -1,5 +1,4 @@
 import cdk = require('aws-cdk-lib');
-import { EcsApplication } from 'aws-cdk-lib/aws-codedeploy';
 import { Construct } from 'constructs';
 
 export class VPCStack extends cdk.Stack {
@@ -39,7 +38,7 @@ interface FargateServiceStackProps extends cdk.StackProps {
   cluster: cdk.aws_ecs.Cluster;
 }
 
-export class SecurityPlaygroundFargateServiceStack extends cdk.Stack {
+export class SecurityPlaygroundFargateStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
     super(scope, id, props);
 
@@ -53,12 +52,22 @@ export class SecurityPlaygroundFargateServiceStack extends cdk.Stack {
         image: cdk.aws_ecs.ContainerImage.fromRegistry("sysdiglabs/security-playground:latest"),
         containerPort: 8080,
       },
+      publicLoadBalancer: this.node.tryGetContext('public_load_balancer'),
     });
 
     // Configure our health check URL
-    fargateService.targetGroup.configureHealthCheck({
-      path: "/health",
-    });
+    // If sysdig_shadow_shadow_healthcheck is true then we'll retrieve /etc/shadow
+    if (this.node.tryGetContext('sysdig_etc_shadow_healthcheck') == "true") {
+      fargateService.targetGroup.configureHealthCheck({
+        path: "/etc/shadow",
+      });
+    }
+    // Otherwise we'll hit the 'normal' healthcheck endpoint
+    else {
+      fargateService.targetGroup.configureHealthCheck({
+        path: "/health",
+      });
+    }
 
     // Add our entrypoint
     // We need to do this here because of https://github.com/aws/aws-cdk/issues/17092
@@ -78,7 +87,7 @@ export class SecurityPlaygroundFargateServiceStack extends cdk.Stack {
   }
 }
 
-export class SecurityPlaygroundManualFargateServiceStack extends cdk.Stack {
+export class SecurityPlaygroundManualInstrumentationFargateStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
     super(scope, id, props);
 
@@ -92,12 +101,22 @@ export class SecurityPlaygroundManualFargateServiceStack extends cdk.Stack {
         image: cdk.aws_ecs.ContainerImage.fromRegistry("sysdiglabs/security-playground:latest"),
         containerPort: 8080,
       },
+      publicLoadBalancer: this.node.tryGetContext('public_load_balancer'),
     });
 
     // Configure our health check URL
-    fargateService.targetGroup.configureHealthCheck({
-      path: "/health",
-    });
+    // If sysdig_shadow_shadow_healthcheck is true then we'll retrieve /etc/shadow
+    if (this.node.tryGetContext('sysdig_shadow_shadow_healthcheck') == "true") {
+      fargateService.targetGroup.configureHealthCheck({
+        path: "/etc/shadow",
+      });
+    }
+    // Otherwise we'll hit the 'normal' healthcheck endpoint
+    else {
+      fargateService.targetGroup.configureHealthCheck({
+        path: "/health",
+      });
+    }
 
     // Manually Instrument this for Sysdig rather than using the Transform
 
