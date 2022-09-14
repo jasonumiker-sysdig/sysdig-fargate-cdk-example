@@ -42,6 +42,8 @@ NOTE: This is not a supported thing from Sysdig (as Sysdig supports CloudFormati
 * SYSDIG_COLLECTOR_PORT - The port of the Sysdig Collector endpoint - only needed if you want to bypass the Orchestrator and send things directly to Sysdig. Usually used if you don't want to deploy the Sysdig Instrumentation and Orchestration Stack. Not recomended.
 3. Run `npx cdk deploy SecurityPlaygroundFargateStack` or `npx cdk deploy SecurityPlaygroundManualFargateStack` depending on whether you want to let our automatic CloudFormation transform happen or if you want to deploy one that we've 'manually' done the transformation/instrumentation in the CDK instead.
 
+NOTE: The SYSDIG_XXX environment variables are only used by SecurityPlaygroundManualFargateStack. SecurityPlaygroundFargateStack gets its environment variables automatically added by the CloudFormation Transform / Automation done by the Sysdig Instrumention Service.
+
 ### How to trigger Sysdig Events once deployed
 
 This example deploys [Sysdig's Security Playground](https://github.com/sysdiglabs/security-playground) which is a insecure Python service that will allow you to read, write and execute things within the container via curl. 
