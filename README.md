@@ -22,8 +22,10 @@ NOTE: This is not a supported thing from Sysdig (as Sysdig supports CloudFormati
 ## Usage
 
 ### Prerequisites
-1. Ensure you've deployed the Sysdig Orchestrator Agent and Instrumention Service, Sysdig via the provided Sysdig CloudFormation Template - https://docs.sysdig.com/en/docs/installation/serverless-agents/aws-fargate-serverless-agents/#latest-cloudformation,
+1. Ensure you've deployed the Sysdig Orchestrator Agent and Instrumention Service, Sysdig via the provided Sysdig CloudFormation Template - https://docs.sysdig.com/en/docs/installation/serverless-agents/aws-fargate-serverless-agents/#latest-cloudformation
+1. Note the name of the LogGroup created by this CloudFormation stack - you'll need to put it in cdk.json below
 1. Then install node.js if required (using Homebrew or the OS pacakage repository such as apt, yum or dnf etc.)
+
 
 ### Install the CDK Stacks
 1. First run `npm install` in this folder
@@ -31,7 +33,7 @@ NOTE: This is not a supported thing from Sysdig (as Sysdig supports CloudFormati
 * account - The AWS account to deploy to
 * region - The AWS region to deploy to
 * sysdig_transform_name - The transform name you specified when you deployed "SysdigMacro",
-* sysdig_logroup_name - There was a LogGroup created by the Sysdig Instrumentation and Orchestration Stack specify it here (as our sidecar will send its logs there)
+* sysdig_logroup_name - There was a LogGroup created by the Sysdig Instrumentation and Orchestration Stack - specify it here (as our sidecar will send its logs there)
 * sysdig_etc_shadow_healthcheck - If you don't want to curl the service yourself (for example to install it into an isolated environment you can't reach easily from a network perspective) then this will change the healthcheck to trigger a Sysdig Event every 5 minutes by changing it's healthcheck to retrieve /etc/shadow each time. 
 * public_load_balancer - If you want to have the AWS ALB for this service on the Internet or not. I highly suggest leaving it false and interacting with this service off the Internet (as it is insecure by design to test Sysdig's Runtime Threat Detection)
 * SYSDIG_ORCHESTRATOR - If you deployed the Sysdig Instrumentation and Orchestration Stack then this is the netork address of the Orchestration service. This is the suggested way to do it
