@@ -60,6 +60,8 @@ $ curl [AWS ALB ADDRESS]/etc/shadow
 
 This will return the content of the /etc/shadow file.
 
+NOTE: If you flip the sysdig_etc_shadow_healthcheck option in cdk.json then we change the ALB healthcheck to do this every 5 minutes automatically for you.
+
 ### Writing a file
 
 You can write to a file using the URL and POSTing the content.
