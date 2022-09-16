@@ -73,6 +73,7 @@ export class SecurityPlaygroundFargateStack extends cdk.Stack {
     // Add our entrypoint
     // We need to do this here because of https://github.com/aws/aws-cdk/issues/17092
     const cfnTaskDef = fargateService.taskDefinition.node.defaultChild as cdk.aws_ecs.CfnTaskDefinition;
+    //cfnTaskDef.addOverride('Properties.ContainerDefinitions.0.EntryPoint', ['/docker-entrypoint.sh'])
     cfnTaskDef.addOverride('Properties.ContainerDefinitions.0.Command', ["gunicorn", "-b", ":8080", "--workers", "2", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "app:app"])
 
     // Add the permissions for the Sysdig CW Logs to the Task Execution Role
