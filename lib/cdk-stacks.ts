@@ -51,6 +51,7 @@ export class SecurityPlaygroundFargateStack extends cdk.Stack {
       taskImageOptions: {
         image: cdk.aws_ecs.ContainerImage.fromRegistry("sysdiglabs/security-playground:latest"),
         containerPort: 8080,
+        command: ["gunicorn", "-b", ":8080", "--workers", "2", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "app:app"],
       },
       publicLoadBalancer: this.node.tryGetContext('public_load_balancer'),
     });
@@ -70,12 +71,6 @@ export class SecurityPlaygroundFargateStack extends cdk.Stack {
       });
     }
 
-    // Add our entrypoint
-    // We need to do this here because of https://github.com/aws/aws-cdk/issues/17092
-    const cfnTaskDef = fargateService.taskDefinition.node.defaultChild as cdk.aws_ecs.CfnTaskDefinition;
-    //cfnTaskDef.addOverride('Properties.ContainerDefinitions.0.EntryPoint', ['/docker-entrypoint.sh'])
-    cfnTaskDef.addOverride('Properties.ContainerDefinitions.0.Command', ["gunicorn", "-b", ":8080", "--workers", "2", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "app:app"])
-
     // Add the permissions for the Sysdig CW Logs to the Task Execution Role
     const sysdigLogGroup = "arn:aws:logs:" + this.region + ":" + this.account + ":log-group:"+ this.node.tryGetContext('sysdig_logroup_name') +":*"
     const policyStatement = new cdk.aws_iam.PolicyStatement({
@@ -89,6 +84,7 @@ export class SecurityPlaygroundFargateStack extends cdk.Stack {
   }
 }
 
+// This optional stack shows what it would take to manually instrument a Task so you don't need to do the CF Transform
 export class SecurityPlaygroundManualInstrumentationFargateStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
     super(scope, id, props);
@@ -102,9 +98,14 @@ export class SecurityPlaygroundManualInstrumentationFargateStack extends cdk.Sta
       taskImageOptions: {
         image: cdk.aws_ecs.ContainerImage.fromRegistry("sysdiglabs/security-playground:latest"),
         containerPort: 8080,
+        // Use Sysdig's agent as the entryPoint - so it runs your command
+        entryPoint: ['/opt/draios/bin/instrument'],
+        command: ["gunicorn", "-b", ":8080", "--workers", "2", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "app:app"],
       },
       publicLoadBalancer: this.node.tryGetContext('public_load_balancer'),
     });
+    // Add the required SYS_PTRACE required KernelCapability
+    fargateService.taskDefinition.findContainer('web')?.linuxParameters?.addCapabilities(cdk.aws_ecs.Capability.SYS_PTRACE)
 
     // Configure our health check URL
     // If sysdig_shadow_shadow_healthcheck is true then we'll retrieve /etc/shadow
@@ -121,8 +122,6 @@ export class SecurityPlaygroundManualInstrumentationFargateStack extends cdk.Sta
       });
     }
 
-    // Manually Instrument this for Sysdig rather than using the Transform
-
     // Add the permissions for the Sysdig CW Logs to the Task Execution Role
     const sysdigLogGroup = "arn:aws:logs:" + this.region + ":" + this.account + ":log-group:"+ this.node.tryGetContext('sysdig_logroup_name') +":*"
     const policyStatement = new cdk.aws_iam.PolicyStatement({
@@ -131,39 +130,29 @@ export class SecurityPlaygroundManualInstrumentationFargateStack extends cdk.Sta
     })
     fargateService.taskDefinition.addToExecutionRolePolicy(policyStatement)
 
-    // First let's add our sidecar container to the Task Definition
+    // Add our sidecar to the Task Definition
     const sidecarContainer = fargateService.taskDefinition.addContainer('sysdig-sidecar-container', {
       image: cdk.aws_ecs.ContainerImage.fromRegistry("quay.io/sysdig/workload-agent:latest"),
       logging: cdk.aws_ecs.LogDrivers.awsLogs({
         streamPrefix: "sysdig",
         logGroup: cdk.aws_logs.LogGroup.fromLogGroupName(this, 'loggroup', this.node.tryGetContext('sysdig_logroup_name')),
       }),
+      entryPoint: ['/opt/draios/bin/logwriter'],
     });
 
-    // Then mount our sidecar into your container as a volume
+    // Mount our sidecar into your container as a volume
     const volumeFrom: cdk.aws_ecs.VolumeFrom = {
       readOnly: true,
       sourceContainer: sidecarContainer.containerName,
     };
     fargateService.taskDefinition.findContainer('web')?.addVolumesFrom({readOnly: true, sourceContainer: sidecarContainer.containerName})
 
-    // Then set the appropriate environment variables
+    // Set all the needed SYSDIG environment variables in your container
     fargateService.taskDefinition.findContainer('web')?.addEnvironment("SYSDIG_ORCHESTRATOR", this.node.tryGetContext('SYSDIG_ORCHESTRATOR'))
     fargateService.taskDefinition.findContainer('web')?.addEnvironment("SYSDIG_ORCHESTRATOR_PORT", this.node.tryGetContext('SYSDIG_ORCHESTRATOR_PORT'))
     fargateService.taskDefinition.findContainer('web')?.addEnvironment("SYSDIG_LOGGING", this.node.tryGetContext('SYSDIG_LOGGING'))
     fargateService.taskDefinition.findContainer('web')?.addEnvironment("SYSDIG_ACCESS_KEY", this.node.tryGetContext('SYSDIG_ACCESS_KEY'))
     fargateService.taskDefinition.findContainer('web')?.addEnvironment("SYSDIG_COLLECTOR", this.node.tryGetContext('SYSDIG_COLLECTOR'))
     fargateService.taskDefinition.findContainer('web')?.addEnvironment("SYSDIG_COLLECTOR_PORT", this.node.tryGetContext('SYSDIG_COLLECTOR_PORT'))
-
-    // Then set our service as the Entrypoint for your container (which then runs your service via commands)
-    const cfnTaskDef = fargateService.taskDefinition.node.defaultChild as cdk.aws_ecs.CfnTaskDefinition;
-    cfnTaskDef.addOverride('Properties.ContainerDefinitions.0.EntryPoint', ['/opt/draios/bin/instrument'])
-    cfnTaskDef.addOverride('Properties.ContainerDefinitions.0.Command', ["gunicorn", "-b", ":8080", "--workers", "2", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "app:app"])
-    
-    // Then set the Entrypoint for our container as well
-    cfnTaskDef.addOverride('Properties.ContainerDefinitions.1.EntryPoint', ['/opt/draios/bin/logwriter'])
-
-    // Then finally add our SYS_PTRACE required KernelCapability
-    cfnTaskDef.addOverride('Properties.ContainerDefinitions.0.linuxParameters.capabilities.add',['SYS_PTRACE'])
   }
 }
