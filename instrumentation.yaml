@@ -1,0 +1,167 @@
+# Edited this to add Exports for MacroName and LogGroup required for CDK automation
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Sysdig Serverless Instrumentation Stack (ReleaseVersion:4.0.0, ServerlessAgent:4.0.0-rc, AgentBuild:4.0.0-rc94, GitRev:5680fed)
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Orchestrator Agent Settings
+      Parameters:
+        - SysdigOrchestratorAgentHost
+        - SysdigOrchestratorAgentPort
+    - Label:
+        default: Instrumentation Settings
+      Parameters:
+        - SysdigMacroName
+        - SysdigInstrumentationLogLevel
+        - SysdigServerlessPatcherImage
+        - SysdigWorkloadAgentImage
+    ParameterLabels:
+      # Orchestrator Settings
+      SysdigOrchestratorAgentHost:
+        default: Orchestrator Agent Host
+      SysdigOrchestratorAgentPort:
+        default: Orchestartor Agent Port
+      # Instrumentation Settings
+      SysdigMacroName:
+        default: Macro Name
+      SysdigInstrumentationLogLevel:
+        default: Sysdig Instrumentation Logging Level
+      SysdigServerlessPatcherImage:
+        default: Sysdig Serverless Patcher Image
+      SysdigWorkloadAgentImage:
+        default: Sysdig Workload Agent Image
+
+Parameters:
+  # Orchestrator Agent Settings
+  SysdigOrchestratorAgentHost:
+    Type: String
+
+  SysdigOrchestratorAgentPort:
+    Type: String
+    Default: "6667"
+    AllowedPattern: ^[0-9]+$
+    ConstraintDescription: Orchestrator Agent Port can include only numbers
+
+  # Instrumentation Settings
+  SysdigMacroName:
+    Type: String
+    Description: Must be unique within your account
+    AllowedPattern: ^[A-Za-z0-9]+$
+    Default: "SysdigMacro"
+    ConstraintDescription: Macro Name can include only letters and numbers
+
+  SysdigInstrumentationLogLevel:
+    Type: String
+    Default: "info"
+    AllowedValues:
+      - "silent"
+      - "error"
+      - "warning"
+      - "info"
+      - "debug"
+      - "trace"
+
+  SysdigServerlessPatcherImage:
+    Type: String
+    Description: Will patch your template to install the Sysdig Workload Agent - Must be hosted on an ECR private registry
+    Default: "quay.io/sysdig/serverless-patcher:4.0.0"
+
+  SysdigWorkloadAgentImage:
+    Type: String
+    Description: The Sysdig Agent that will secure your workload
+    Default: "quay.io/sysdig/workload-agent:4.0.0"
+
+Mappings:
+  Sysdig:
+    Collector:
+      SysdigAccessKey: ""
+      SysdigCollectorHost: ""
+      SysdigCollectorPort: ""
+  Kilt:
+    Mode:
+      OptIn: ""
+    Customization:
+      Definition: ""
+      DefinitionType: ""
+      RecipeConfiguration: ""
+
+Conditions:
+  IsKiltCustomRecipeConfiguration: !Not [ !Equals [!FindInMap [Kilt, Customization, RecipeConfiguration], ""]]
+  IsSysdigDirectConnection: !And
+    - !Not [!Equals [!FindInMap [Sysdig, Collector, SysdigAccessKey], "" ]]
+    - !Not [!Equals [!FindInMap [Sysdig, Collector, SysdigCollectorHost], "" ]]
+    - !Not [!Equals [!FindInMap [Sysdig, Collector, SysdigCollectorPort], "" ]]
+  IsKiltModeOptIn: !Equals [!FindInMap [Kilt, Mode, OptIn], "true"]
+  IsKiltCustomDefinition: !And
+    - !Not [!Equals [!FindInMap [Kilt, Customization, Definition], ""]]
+    - !Not [!Equals [!FindInMap [Kilt, Customization, DefinitionType], ""]]
+
+Outputs:
+  SysdigTransformationMacro:
+    Description: Add this transformation macro at the root level of your template
+    Value: !Sub 'Transform: ["${SysdigMacroName}"]'
+    Export:
+      Name: SysdigMacroName
+  SysdigLogGroup:
+    Description: Log group that our agent logs in each task will go
+    Value: !Ref SysdigLogGroup
+    Export:
+      Name: SysdigLogGroup
+
+Resources:
+  SysdigLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 365
+
+  ServerlessPatcherRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+
+  ServerlessPatcherLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      PackageType: Image
+      Role: !GetAtt ServerlessPatcherRole.Arn
+      Code:
+        ImageUri: !Ref SysdigServerlessPatcherImage
+      Environment:
+        Variables:
+          # Sysdig Orchestrator Agent
+          SYSDIG_ORCHESTRATOR_HOST: !Ref SysdigOrchestratorAgentHost
+          SYSDIG_ORCHESTRATOR_PORT: !Ref SysdigOrchestratorAgentPort
+          # Sysdig Instrumentation
+          SYSDIG_WORKLOAD_AGENT_IMAGE: !Ref SysdigWorkloadAgentImage
+          SYSDIG_LOGGING: !Ref SysdigInstrumentationLogLevel
+          KILT_LOG_GROUP: !Ref SysdigLogGroup
+          # Sysdig Collector
+          SYSDIG_ACCESS_KEY: !If [IsSysdigDirectConnection, !FindInMap [Sysdig, Collector, SysdigAccessKey], !Ref AWS::NoValue]
+          SYSDIG_COLLECTOR_HOST: !If [IsSysdigDirectConnection, !FindInMap [Sysdig, Collector, SysdigCollectorHost], !Ref AWS::NoValue]
+          SYSDIG_COLLECTOR_PORT: !If [IsSysdigDirectConnection, !FindInMap [Sysdig, Collector, SysdigCollectorPort], !Ref AWS::NoValue]
+          # Kilt OptIn Mode
+          KILT_OPT_IN: !If [IsKiltModeOptIn, "YES", !Ref AWS::NoValue]
+          # Kilt Customization
+          KILT_DEFINITION: !If [IsKiltCustomDefinition, !FindInMap [Sysdig, Collector, SysdigCollectorHost], !Ref AWS::NoValue]
+          KILT_DEFINITION_TYPE: !If [IsKiltCustomDefinition, !FindInMap [Sysdig, Collector, SysdigCollectorHost], !Ref AWS::NoValue]
+          KILT_RECIPE_CONFIG: !If [IsKiltCustomDefinition, !FindInMap [Sysdig, Collector, SysdigCollectorHost], !Ref AWS::NoValue]
+
+  ServerlessPatcherMacro:
+    Type: AWS::CloudFormation::Macro
+    Properties:
+      Name: !Ref SysdigMacroName
+      Description: Applies Sysdig instrumentation to Fargate ECS Tasks
+      FunctionName: !GetAtt ServerlessPatcherLambda.Arn

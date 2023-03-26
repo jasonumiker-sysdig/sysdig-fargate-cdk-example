@@ -1,0 +1,439 @@
+# Edited this to add Exports for OrchestratorHost and OrchestratorPort required for CDK automation
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Sysdig Serverless Orchestrator Agent (ReleaseVersion:4.0.0, ServerlessAgent:4.0.0-rc, AgentBuild:4.0.0-rc94, GitRev:5680fed)
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Sysdig Settings
+      Parameters:
+      - SysdigAccessKey
+      - SysdigCollectorHost
+      - SysdigCollectorPort
+    - Label:
+        default: Network Settings
+      Parameters:
+      - VPC
+      - SubnetA
+      - SubnetB
+      - NetworkType
+    - Label:
+        default: Advanced Settings
+      Parameters:
+      - SysdigAgentTags
+      - SysdigOrchestratorAgentImage
+      - SysdigCheckCollectorCertificate
+      - SysdigOrchestratorAgentPort
+    ParameterLabels:
+      # Sysdig Settings
+      SysdigAccessKey:
+        default: Sysdig Access Key
+      SysdigCollectorHost:
+        default: Sysdig Collector Host
+      SysdigCollectorPort:
+        default: Sysdig Collector Port
+      # Network Settings
+      VPC:
+        default: VPC Id
+      SubnetA:
+        default: Subnet A
+      SubnetB:
+        default: Subnet B
+      NetworkType:
+        default: Network Type
+      # Advanced Settings
+      SysdigAgentTags:
+        default: Agent Tags
+      SysdigOrchestratorAgentImage:
+        default: Sysdig Orchestrator Agent Image
+      SysdigCheckCollectorCertificate:
+        default: Check Collector SSL Certificate
+      SysdigOrchestratorAgentPort:
+        default: Sysdig Orchestrator Agent Port
+
+Mappings:
+  # Upload custom CA certificates
+  CACertificate:
+    Collector:
+      Type: "base64"
+      Value: ""
+      Path: "/ssl/collector_cert.pem"
+    HttpProxy:
+      Type: "base64"
+      Value: ""
+      Path: "/ssl/proxy_cert.pem"
+
+  # Advanced configuration options
+  Configuration:
+    Collector:
+      CACertificate: ""  # /ssl/collector_cert.pem
+    HttpProxy:
+      ProxyHost: ""
+      ProxyPort: ""
+      ProxyUser: ""
+      ProxyPassword: ""  # Cleartext or SecretsManager secret reference (arn:aws:secretsmanager:region:aws_account_id:secret:secret-name:json-key:version-stage:version-id)"
+      SSL: ""
+      SSLVerifyCertificate: ""
+      CACertificate: ""  # /ssl/proxy_cert.pem
+
+Parameters:
+  # Sysdig Settings
+  SysdigAccessKey:
+    Type: String
+    Description: "Cleartext or SecretsManager secret reference (arn:aws:secretsmanager:region:aws_account_id:secret:secret-name:json-key:version-stage:version-id)"
+
+  SysdigCollectorHost:
+    Type: String
+    Default: collector.sysdigcloud.com
+
+  SysdigCollectorPort:
+    Type: String
+    Default: 6443
+    AllowedPattern: ^[0-9]+$
+    ConstraintDescription: Sysdig Collector Port must be a number
+
+  # Network Settings
+  VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC where your service is deployed
+
+  SubnetA:
+    Type: AWS::EC2::Subnet::Id
+    Description: A subnet that can access internet and is reachable by instrumented services
+
+  SubnetB:
+    Type: AWS::EC2::Subnet::Id
+    Description: A subnet that can access internet and is reachable by instrumented services
+
+  NetworkType:
+    Type: String
+    Description: Defines whether or not the task needs a public IP
+    AllowedValues:
+      - "Public Subnet"
+      - "Private Subnet"
+
+  # Advanced Settings
+  SysdigAgentTags:
+    Type: String
+    Description: Enter a comma-separated list of tags (e.g. role:webserver,location:europe)
+    Default: ""
+
+  SysdigOrchestratorAgentImage:
+    Type: String
+    Default: quay.io/sysdig/orchestrator-agent:4.0.0
+
+  SysdigCheckCollectorCertificate:
+    Type: String
+    Default: true
+    AllowedValues:
+      - true
+      - false
+
+  SysdigOrchestratorAgentPort:
+    Type: String
+    Description: Port that the orchestrator and workload will use to communicate
+    Default: 6667
+    AllowedPattern: ^[0-9]+$
+    ConstraintDescription: Sysdig Orchestrator Agent Port must be a number
+
+Conditions:
+    IsPublicSubnet: !Equals [!Ref NetworkType, "Public Subnet"]
+
+    DoFetchSecretAccessKey: !Equals [!Select [0, !Split ["arn:aws:secretsmanager", !Ref SysdigAccessKey]], ""]
+
+    DoUploadCollectorCACertificate: !Not [!Equals [!FindInMap [ CACertificate, Collector, Value ], ""] ]
+
+    DoUploadHttpProxyCACertificate: !Not [!Equals [!FindInMap [ CACertificate, HttpProxy, Value ], ""] ]
+
+    DoConfigureCollectorCACertificate: !Not [!Equals [!FindInMap [ Configuration, Collector, CACertificate ], ""] ]
+
+    DoConfigureHttpProxy: !Not [!Equals [!FindInMap [ Configuration, HttpProxy, ProxyHost ], ""] ]
+
+    IsProxyPasswordSecret: !And
+      - !Not [ !Equals [ !FindInMap [ Configuration, HttpProxy, ProxyPassword ], ""] ]
+      - !Equals [!Select [0, !Split ["arn:aws:secretsmanager", !FindInMap [ Configuration, HttpProxy, ProxyPassword ] ] ], ""]
+
+    DoFetchSecretProxyPassword: !And
+      - !Condition DoConfigureHttpProxy
+      - !Condition IsProxyPasswordSecret
+
+    DoUseCleartextProxyPassword: !And
+      - !Condition DoConfigureHttpProxy
+      - !Not [ Condition: IsProxyPasswordSecret ]
+
+Outputs:
+  OrchestratorHost:
+    Description: Host to which fargate workload agents need to connect
+    Value: !GetAtt SysdigLoadBalancer.DNSName
+    Export:
+      Name: SysdigFargateOrchestrationHost
+  OrchestratorPort:
+    Description: The port the fargate workload agent needs to connect to
+    Value: !Ref SysdigOrchestratorAgentPort
+    Export:
+      Name: SysdigFargateOrchestrationPort
+
+Resources:
+  SysdigAgentCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      Tags:
+        - Key: application
+          Value: sysdig
+
+  SysdigOrchestratorAgentLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 365
+
+  SysdigOrchestratorAgentExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+      Policies:
+        - !If
+          - DoFetchSecretAccessKey
+          - PolicyName: "SysdigGetSecretAccessKey"
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - "secretsmanager:GetSecretValue"
+                  Resource: !Sub
+                    - "arn:aws:secretsmanager:${Region}:${AwsAccountId}:secret:${SecretName}"
+                    - Region: !Select [3, !Split [ ":", !Ref SysdigAccessKey]]
+                      AwsAccountId: !Select [4, !Split [ ":", !Ref SysdigAccessKey]]
+                      SecretName: !Select [6, !Split [ ":", !Ref SysdigAccessKey]]
+          - !Ref AWS::NoValue
+        - !If
+          - DoFetchSecretProxyPassword
+          - PolicyName: "SysdigGetSecretHttpProxyPassword"
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - "secretsmanager:GetSecretValue"
+                  Resource: !Sub
+                    - "arn:aws:secretsmanager:${Region}:${AwsAccountId}:secret:${SecretName}"
+                    - Region: !Select [ 3, !Split [ ":", !FindInMap [ Configuration, HttpProxy, ProxyPassword ] ] ]
+                      AwsAccountId: !Select [ 4, !Split [ ":", !FindInMap [ Configuration, HttpProxy, ProxyPassword ] ] ]
+                      SecretName: !Select [ 6, !Split [ ":", !FindInMap [ Configuration, HttpProxy, ProxyPassword ] ] ]
+          - !Ref AWS::NoValue
+      Tags:
+        - Key: application
+          Value: sysdig
+
+  SysdigOrchestratorAgentSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow agentino to connect
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref SysdigOrchestratorAgentPort
+          ToPort: !Ref SysdigOrchestratorAgentPort
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: application
+          Value: sysdig
+
+  SysdigOrchestratorAgent:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn: SysdigOrchestratorAgentLogs
+    Properties:
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 2048
+      Memory: 8GB
+      ExecutionRoleArn: !Ref SysdigOrchestratorAgentExecutionRole
+      ContainerDefinitions:
+        - Name: OrchestratorAgent
+          Image: !Ref SysdigOrchestratorAgentImage
+          Secrets:
+            - !If
+              - DoFetchSecretAccessKey
+              - Name: ACCESS_KEY
+                ValueFrom: !Ref SysdigAccessKey
+              - !Ref AWS::NoValue
+            - !If
+              - DoFetchSecretProxyPassword
+              - Name: PROXY_PASSWORD
+                ValueFrom: !FindInMap [ Configuration, HttpProxy, ProxyPassword ]
+              - !Ref AWS::NoValue
+          Environment:
+            - !If
+              - DoFetchSecretAccessKey
+              - !Ref AWS::NoValue
+              - Name: ACCESS_KEY
+                Value: !Ref SysdigAccessKey
+            - Name: COLLECTOR
+              Value: !Ref SysdigCollectorHost
+            - Name: COLLECTOR_PORT
+              Value: !Ref SysdigCollectorPort
+            - Name: TAGS
+              Value: !Ref SysdigAgentTags
+            - Name: CHECK_CERTIFICATE
+              Value: !Ref SysdigCheckCollectorCertificate
+            - Name: SYSDIG_ORCHESTRATOR_PORT
+              Value: !Ref SysdigOrchestratorAgentPort
+            # Upload custom collector CA certificate
+            - !If
+              - DoUploadCollectorCACertificate
+              - Name: COLLECTOR_CA_CERTIFICATE_TYPE
+                Value: !FindInMap [ CACertificate, Collector, Type ]
+              - !Ref AWS::NoValue
+            - !If
+              - DoUploadCollectorCACertificate
+              - Name: COLLECTOR_CA_CERTIFICATE_VALUE
+                Value: !FindInMap [ CACertificate, Collector, Value ]
+              - !Ref AWS::NoValue
+            - !If
+              - DoUploadCollectorCACertificate
+              - Name: COLLECTOR_CA_CERTIFICATE_PATH
+                Value: !FindInMap [ CACertificate, Collector, Path ]
+              - !Ref AWS::NoValue
+            # Configure custom collector CA certificate
+            - !If
+              - DoConfigureCollectorCACertificate
+              - Name: COLLECTOR_CA_CERTIFICATE
+                Value: !FindInMap [ Configuration, Collector, CACertificate ]
+              - !Ref AWS::NoValue
+            # Upload HTTP Proxy CA certificate
+            - !If
+              - DoUploadHttpProxyCACertificate
+              - Name: HTTP_PROXY_CA_CERTIFICATE_TYPE
+                Value: !FindInMap [ CACertificate, HttpProxy, Type ]
+              - !Ref AWS::NoValue
+            - !If
+              - DoUploadHttpProxyCACertificate
+              - Name: HTTP_PROXY_CA_CERTIFICATE_VALUE
+                Value: !FindInMap [ CACertificate, HttpProxy, Value ]
+              - !Ref AWS::NoValue
+            - !If
+              - DoUploadHttpProxyCACertificate
+              - Name: HTTP_PROXY_CA_CERTIFICATE_PATH
+                Value: !FindInMap [ CACertificate, HttpProxy, Path ]
+              - !Ref AWS::NoValue
+            # Configure HTTP Proxy
+            - !If
+              - DoConfigureHttpProxy
+              - Name: PROXY_HOST
+                Value: !FindInMap [ Configuration, HttpProxy, ProxyHost ]
+              - !Ref AWS::NoValue
+            - !If
+              - DoConfigureHttpProxy
+              - Name: PROXY_PORT
+                Value: !FindInMap [ Configuration, HttpProxy, ProxyPort ]
+              - !Ref AWS::NoValue
+            - !If
+              - DoConfigureHttpProxy
+              - Name: PROXY_USER
+                Value: !FindInMap [ Configuration, HttpProxy, ProxyUser ]
+              - !Ref AWS::NoValue
+            - !If
+              - DoUseCleartextProxyPassword
+              - Name: PROXY_PASSWORD
+                Value: !FindInMap [ Configuration, HttpProxy, ProxyPassword ]
+              - !Ref AWS::NoValue
+            - !If
+              - DoConfigureHttpProxy
+              - Name: PROXY_SSL
+                Value: !FindInMap [ Configuration, HttpProxy, SSL ]
+              - !Ref AWS::NoValue
+            - !If
+              - DoConfigureHttpProxy
+              - Name: PROXY_SSL_VERIFY_CERTIFICATE
+                Value: !FindInMap [ Configuration, HttpProxy, SSLVerifyCertificate ]
+              - !Ref AWS::NoValue
+            - !If
+              - DoConfigureHttpProxy
+              - Name: PROXY_CA_CERTIFICATE
+                Value: !FindInMap [ Configuration, HttpProxy, CACertificate ]
+              - !Ref AWS::NoValue
+          PortMappings:
+            - ContainerPort: !Ref SysdigOrchestratorAgentPort
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref SysdigOrchestratorAgentLogs
+              awslogs-stream-prefix: ecs
+      Tags:
+        - Key: application
+          Value: sysdig
+
+  SysdigLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Scheme: internal
+      Type: network
+      Subnets:
+        - !Ref SubnetA
+        - !Ref SubnetB
+      Tags:
+        - Key: application
+          Value: sysdig
+
+  SysdigTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: !Ref SysdigOrchestratorAgentPort
+      Protocol: TCP
+      TargetType: ip
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 60 # default is 300
+      VpcId: !Ref VPC
+
+  SysdigLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref SysdigTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref SysdigLoadBalancer
+      Port: !Ref SysdigOrchestratorAgentPort
+      Protocol: TCP
+
+  SysdigOrchestratorAgentService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - SysdigLoadBalancerListener
+    Properties:
+      ServiceName: SysdigOrchestratorAgent
+      Cluster: !Ref SysdigAgentCluster
+      TaskDefinition: !Ref SysdigOrchestratorAgent
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+      DesiredCount: 1
+      LaunchType: FARGATE
+      PlatformVersion: 1.4.0
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: !If [IsPublicSubnet, "ENABLED", "DISABLED"]
+          Subnets:
+            - !Ref SubnetA
+            - !Ref SubnetB
+          SecurityGroups:
+            - !Ref SysdigOrchestratorAgentSecurityGroup
+      LoadBalancers:
+        - ContainerName: OrchestratorAgent
+          ContainerPort: !Ref SysdigOrchestratorAgentPort
+          TargetGroupArn: !Ref SysdigTargetGroup
+      Tags:
+        - Key: application
+          Value: sysdig
