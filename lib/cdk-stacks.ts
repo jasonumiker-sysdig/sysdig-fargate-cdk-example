@@ -120,39 +120,39 @@ export class InstrumentationStack extends cdk.Stack {
   }
 }
 
-  export class SecurityPlaygroundFargateStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
-    super(scope, id, props);
+export class SecurityPlaygroundFargateStack extends cdk.Stack {
+constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
+  super(scope, id, props);
 
-    const { vpc } = props;
-    const { cluster } = props;
+  const { vpc } = props;
+  const { cluster } = props;
 
-    // Instantiate Fargate Service with just cluster and image and port
-    const fargateService = new cdk.aws_ecs_patterns.ApplicationLoadBalancedFargateService(this, 'securityplayground-service', {
-      cluster,
-      taskImageOptions: {
-        image: cdk.aws_ecs.ContainerImage.fromRegistry("sysdiglabs/security-playground:latest"),
-        containerPort: 8080,
-        command: ["gunicorn", "-b", ":8080", "--workers", "2", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "app:app"],
-      },
-      publicLoadBalancer: this.node.tryGetContext('public_load_balancer'),
-      assignPublicIp: true
+  // Instantiate Fargate Service with just cluster and image and port
+  const fargateService = new cdk.aws_ecs_patterns.ApplicationLoadBalancedFargateService(this, 'securityplayground-service', {
+    cluster,
+    taskImageOptions: {
+      image: cdk.aws_ecs.ContainerImage.fromRegistry("sysdiglabs/security-playground:latest"),
+      containerPort: 8080,
+      command: ["gunicorn", "-b", ":8080", "--workers", "2", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "app:app"],
+    },
+    publicLoadBalancer: this.node.tryGetContext('public_load_balancer'),
+    assignPublicIp: true
+  });
+
+  // Configure our health check URL
+  // If sysdig_shadow_shadow_healthcheck is true then we'll retrieve /etc/shadow
+  if (this.node.tryGetContext('sysdig_etc_shadow_healthcheck') == "true") {
+    fargateService.targetGroup.configureHealthCheck({
+      path: "/etc/shadow",
+      interval: cdk.Duration.minutes(5),
     });
-
-    // Configure our health check URL
-    // If sysdig_shadow_shadow_healthcheck is true then we'll retrieve /etc/shadow
-    if (this.node.tryGetContext('sysdig_etc_shadow_healthcheck') == "true") {
-      fargateService.targetGroup.configureHealthCheck({
-        path: "/etc/shadow",
-        interval: cdk.Duration.minutes(5),
-      });
-    }
-    // Otherwise we'll hit the 'normal' healthcheck endpoint
-    else {
-      fargateService.targetGroup.configureHealthCheck({
-        path: "/health",
-      });
-    }
+  }
+  // Otherwise we'll hit the 'normal' healthcheck endpoint
+  else {
+    fargateService.targetGroup.configureHealthCheck({
+      path: "/health",
+    });
+  }
 
     // Add the permissions for the Sysdig CW Logs to the Task Execution Role
     const sysdigLogGroup = "arn:aws:logs:" + this.region + ":" + this.account + ":log-group:" + cdk.Fn.importValue("SysdigLogGroup") + ":*"
@@ -161,6 +161,50 @@ export class InstrumentationStack extends cdk.Stack {
       resources: [sysdigLogGroup],
     })
     fargateService.taskDefinition.addToExecutionRolePolicy(policyStatement)
+
+    // Add the Transform
+    this.templateOptions.transforms = ["SysdigMacro"]
+  }
+}
+
+export class TGFargateStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
+    super(scope, id, props);
+
+    const { vpc } = props;
+    const { cluster } = props;
+
+    // Run this as a scheduled task every 15 minutes
+    const fargateTask = new cdk.aws_ecs_patterns.ScheduledFargateTask(this, 'tg-service', {
+      cluster,
+      scheduledFargateTaskImageOptions: {
+        image: cdk.aws_ecs.ContainerImage.fromRegistry("dockerbadboy/art:latest"),
+        // Removed LOAD.BPF.PROG, RECON.LINPEAS and PROOT.EXEC which seem to crash the Task in Fargate
+        command: ["pwsh", "-c", "(./RunTests.ps1 XMRIG.EXEC STDIN.NETWORK DEV.SHM.EXEC T1048 RECON.FIND.SUID T1611.002 CONTAINER.ESCAPE.NSENTER CREDS.DUMP.MEMORY KILL.MALICIOUS.PROC Base64.PYTHON BASE64.CLI Base64.SHELLSCRIPT CONNECT.UNEXPECTED RECON.GPG SUBTERFUGE.LASTLOG LD.LINUX.EXEC LD.SO.PRELOAD USERFAULTFD.HANDLER TIMESTOMP SUBTERFUGE.FILEBELOWDEV SYMLINK.ETC.SHADOW PRIVESC.SUDO)"],
+        cpu: 2048,
+        memoryLimitMiB: 8192,      
+      },
+      schedule: cdk.aws_applicationautoscaling.Schedule.expression('cron(0/15 * * * ? *)'),
+      subnetSelection: {
+        subnetType: cdk.aws_ec2.SubnetType.PUBLIC
+      }
+    });
+
+    // Enable a public IP for this
+    // See this GitHub issue for why we have to use CfnResource override
+    // https://github.com/aws/aws-cdk/issues/9233
+    (fargateTask.eventRule.node.defaultChild as cdk.CfnResource).addPropertyOverride(
+      "Targets.0.EcsParameters.NetworkConfiguration.AwsVpcConfiguration.AssignPublicIp",
+      "ENABLED"
+    );
+
+    // Add the permissions for the Sysdig CW Logs to the Task Execution Role
+    const sysdigLogGroup = "arn:aws:logs:" + this.region + ":" + this.account + ":log-group:" + cdk.Fn.importValue("SysdigLogGroup") + ":*"
+    const policyStatement = new cdk.aws_iam.PolicyStatement({
+      actions: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+      resources: [sysdigLogGroup],
+    })
+    fargateTask.taskDefinition.addToExecutionRolePolicy(policyStatement)
 
     // Add the Transform
     this.templateOptions.transforms = ["SysdigMacro"]
