@@ -69,3 +69,6 @@ $ curl -X POST [AWS ALB ADDRESS]/exec -d 'command=ls -la'
 ```
 
 This will capture and return the STDOUT of the command executed.
+
+### Cleaning up
+Just run `npx cdk destroy --all -f` to clean everything up once you're done
