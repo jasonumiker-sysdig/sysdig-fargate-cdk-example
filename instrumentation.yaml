@@ -1,7 +1,7 @@
 # Edited this to add Exports for MacroName and LogGroup required for CDK automation
 AWSTemplateFormatVersion: 2010-09-09
 
-Description: Sysdig Serverless Instrumentation Stack (ReleaseVersion:4.0.0, ServerlessAgent:4.0.0-rc, AgentBuild:4.0.0-rc94, GitRev:5680fed)
+Description: Sysdig Serverless Instrumentation Stack (ReleaseVersion:4.1.1, ServerlessAgent:4.1.1-rc, AgentBuild:4.1.1-rc105, GitRev:e6b68e8)
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -67,12 +67,12 @@ Parameters:
   SysdigServerlessPatcherImage:
     Type: String
     Description: Will patch your template to install the Sysdig Workload Agent - Must be hosted on an ECR private registry
-    Default: "quay.io/sysdig/serverless-patcher:4.0.0"
+    Default: "quay.io/sysdig/serverless-patcher:4.1.1"
 
   SysdigWorkloadAgentImage:
     Type: String
     Description: The Sysdig Agent that will secure your workload
-    Default: "quay.io/sysdig/workload-agent:4.0.0"
+    Default: "quay.io/sysdig/workload-agent:4.1.1"
 
 Mappings:
   Sysdig:
@@ -80,6 +80,8 @@ Mappings:
       SysdigAccessKey: ""
       SysdigCollectorHost: ""
       SysdigCollectorPort: ""
+    Agent:
+      NiceValueIncrement: ""
   Kilt:
     Mode:
       OptIn: ""
@@ -89,7 +91,6 @@ Mappings:
       RecipeConfiguration: ""
 
 Conditions:
-  IsKiltCustomRecipeConfiguration: !Not [ !Equals [!FindInMap [Kilt, Customization, RecipeConfiguration], ""]]
   IsSysdigDirectConnection: !And
     - !Not [!Equals [!FindInMap [Sysdig, Collector, SysdigAccessKey], "" ]]
     - !Not [!Equals [!FindInMap [Sysdig, Collector, SysdigCollectorHost], "" ]]
@@ -98,6 +99,8 @@ Conditions:
   IsKiltCustomDefinition: !And
     - !Not [!Equals [!FindInMap [Kilt, Customization, Definition], ""]]
     - !Not [!Equals [!FindInMap [Kilt, Customization, DefinitionType], ""]]
+  IsKiltCustomRecipeConfiguration: !Not [ !Equals [!FindInMap [Kilt, Customization, RecipeConfiguration], ""]]
+  DoSetNiceValueIncrement: !Not [ !Equals [!FindInMap [Sysdig, Agent, NiceValueIncrement], ""]]
 
 Outputs:
   SysdigTransformationMacro:
@@ -152,12 +155,14 @@ Resources:
           SYSDIG_ACCESS_KEY: !If [IsSysdigDirectConnection, !FindInMap [Sysdig, Collector, SysdigAccessKey], !Ref AWS::NoValue]
           SYSDIG_COLLECTOR_HOST: !If [IsSysdigDirectConnection, !FindInMap [Sysdig, Collector, SysdigCollectorHost], !Ref AWS::NoValue]
           SYSDIG_COLLECTOR_PORT: !If [IsSysdigDirectConnection, !FindInMap [Sysdig, Collector, SysdigCollectorPort], !Ref AWS::NoValue]
+          # Sysdig Agent Nice Value Increment
+          SYSDIG_AGENT_NICE_VALUE_INCREMENT: !If [DoSetNiceValueIncrement, !FindInMap [Sysdig, Agent, NiceValueIncrement], !Ref AWS::NoValue]
           # Kilt OptIn Mode
           KILT_OPT_IN: !If [IsKiltModeOptIn, "YES", !Ref AWS::NoValue]
-          # Kilt Customization
-          KILT_DEFINITION: !If [IsKiltCustomDefinition, !FindInMap [Sysdig, Collector, SysdigCollectorHost], !Ref AWS::NoValue]
-          KILT_DEFINITION_TYPE: !If [IsKiltCustomDefinition, !FindInMap [Sysdig, Collector, SysdigCollectorHost], !Ref AWS::NoValue]
-          KILT_RECIPE_CONFIG: !If [IsKiltCustomDefinition, !FindInMap [Sysdig, Collector, SysdigCollectorHost], !Ref AWS::NoValue]
+          # Kilt Definition/Recipe Customization
+          KILT_DEFINITION: !If [IsKiltCustomDefinition, !FindInMap [Kilt, Customization, Definition], !Ref AWS::NoValue]
+          KILT_DEFINITION_TYPE: !If [IsKiltCustomDefinition, !FindInMap [Kilt, Customization, DefinitionType], !Ref AWS::NoValue]
+          KILT_RECIPE_CONFIG: !If [IsKiltCustomRecipeConfiguration, !FindInMap [Kilt, Customization, RecipeConfiguration], !Ref AWS::NoValue]
 
   ServerlessPatcherMacro:
     Type: AWS::CloudFormation::Macro

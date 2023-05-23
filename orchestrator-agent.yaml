@@ -1,7 +1,7 @@
 # Edited this to add Exports for OrchestratorHost and OrchestratorPort required for CDK automation
 AWSTemplateFormatVersion: 2010-09-09
 
-Description: Sysdig Serverless Orchestrator Agent (ReleaseVersion:4.0.0, ServerlessAgent:4.0.0-rc, AgentBuild:4.0.0-rc94, GitRev:5680fed)
+Description: Sysdig Serverless Orchestrator Agent (ReleaseVersion:4.1.1, ServerlessAgent:4.1.1-rc, AgentBuild:4.1.1-rc105, GitRev:e6b68e8)
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -54,7 +54,7 @@ Metadata:
         default: Sysdig Orchestrator Agent Port
 
 Mappings:
-  # Upload custom CA certificates
+  # Orchestrator - Upload custom CA certificates
   CACertificate:
     Collector:
       Type: "base64"
@@ -65,7 +65,7 @@ Mappings:
       Value: ""
       Path: "/ssl/proxy_cert.pem"
 
-  # Advanced configuration options
+  # Orchestrator - Advanced configuration options
   Configuration:
     Collector:
       CACertificate: ""  # /ssl/collector_cert.pem
@@ -77,6 +77,11 @@ Mappings:
       SSL: ""
       SSLVerifyCertificate: ""
       CACertificate: ""  # /ssl/proxy_cert.pem
+
+  # ECS Cluster - Configuration
+  Cluster:
+    Configuration:
+      ContainerInsights: ""  # enabled | disabled
 
 Parameters:
   # Sysdig Settings
@@ -122,7 +127,7 @@ Parameters:
 
   SysdigOrchestratorAgentImage:
     Type: String
-    Default: quay.io/sysdig/orchestrator-agent:4.0.0
+    Default: quay.io/sysdig/orchestrator-agent:4.1.1
 
   SysdigCheckCollectorCertificate:
     Type: String
@@ -163,6 +168,8 @@ Conditions:
       - !Condition DoConfigureHttpProxy
       - !Not [ Condition: IsProxyPasswordSecret ]
 
+    DoOverrideContainerInsights: !Not [ !Equals [ !FindInMap [ Cluster, Configuration, ContainerInsights ], "" ] ]
+
 Outputs:
   OrchestratorHost:
     Description: Host to which fargate workload agents need to connect
@@ -179,6 +186,12 @@ Resources:
   SysdigAgentCluster:
     Type: AWS::ECS::Cluster
     Properties:
+      ClusterSettings:
+        - !If
+          - DoOverrideContainerInsights
+          - Name: containerInsights
+            Value: !FindInMap [ Cluster, Configuration, ContainerInsights ]
+          - !Ref AWS::NoValue
       Tags:
         - Key: application
           Value: sysdig
