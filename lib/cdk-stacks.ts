@@ -164,6 +164,12 @@ constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
 
     // Add the Transform
     this.templateOptions.transforms = ["SysdigMacro"]
+
+    // Export the LB address
+    new cdk.CfnOutput(this, "SPALBAddress", {
+      value: fargateService.loadBalancer.loadBalancerDnsName,
+      exportName: "SPALBAddress",
+    });
   }
 }
 
