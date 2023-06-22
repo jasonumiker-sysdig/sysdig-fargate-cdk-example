@@ -18,8 +18,8 @@ export class ECRStack extends cdk.Stack {
 
     // Copy our image from quay to our new ECR
     new ecrdeploy.ECRDeployment(this, 'DeployDockerImage', {
-      src: new ecrdeploy.DockerImageName('quay.io/sysdig/serverless-patcher:4.0.0'),
-      dest: new ecrdeploy.DockerImageName(`${this.repository.repositoryUri}:4.0.0`),
+      src: new ecrdeploy.DockerImageName('quay.io/sysdig/serverless-patcher:4.1.2'),
+      dest: new ecrdeploy.DockerImageName(`${this.repository.repositoryUri}:4.1.2`),
     });
   }
 }
