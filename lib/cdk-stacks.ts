@@ -136,7 +136,9 @@ constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
       command: ["gunicorn", "-b", ":8080", "--workers", "2", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "app:app"],
     },
     publicLoadBalancer: this.node.tryGetContext('public_load_balancer'),
-    assignPublicIp: true
+    assignPublicIp: true,
+    cpu: 1024,
+    memoryLimitMiB: 2048
   });
 
   // Configure our health check URL
