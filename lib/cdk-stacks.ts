@@ -87,7 +87,7 @@ export class OrchestrationStack extends cdk.Stack {
         SubnetB: vpc.publicSubnets.at(1)?.subnetId,
         NetworkType: "Public Subnet",
         SysdigAgentTags: "",
-        SysdigOrchestratorAgentImage: "quay.io/sysdig/orchestrator-agent:4.0.0",
+        SysdigOrchestratorAgentImage: "quay.io/sysdig/orchestrator-agent:4.1.2",
         SysdigCheckCollectorCertificate: "true",
         SysdigOrchestratorAgentPort: "6667"
       },
@@ -113,8 +113,8 @@ export class InstrumentationStack extends cdk.Stack {
         SysdigOrchestratorAgentPort: cdk.Fn.importValue('SysdigFargateOrchestrationPort'),
         SysdigMacroName: "SysdigMacro",
         SysdigInstrumentationLogLevel: "info",
-        SysdigServerlessPatcherImage: repository.repositoryUri + ":4.0.0",
-        SysdigWorkloadAgentImage: "quay.io/sysdig/workload-agent:4.0.0",
+        SysdigServerlessPatcherImage: repository.repositoryUri + ":4.1.2",
+        SysdigWorkloadAgentImage: "quay.io/sysdig/workload-agent:4.1.2",
       },
     });
   }
@@ -131,7 +131,7 @@ constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
   const fargateService = new cdk.aws_ecs_patterns.ApplicationLoadBalancedFargateService(this, 'securityplayground-service', {
     cluster,
     taskImageOptions: {
-      image: cdk.aws_ecs.ContainerImage.fromRegistry("sysdiglabs/security-playground:latest"),
+      image: cdk.aws_ecs.ContainerImage.fromRegistry("public.ecr.aws/m9h2b5e7/security-playground:110623"),
       containerPort: 8080,
       command: ["gunicorn", "-b", ":8080", "--workers", "2", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "app:app"],
     },

