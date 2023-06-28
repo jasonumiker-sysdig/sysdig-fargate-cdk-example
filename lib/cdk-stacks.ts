@@ -127,6 +127,15 @@ constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
   const { vpc } = props;
   const { cluster } = props;
 
+  // Create a secret in Secrets Manager (to ex-fil)
+  const secret = new cdk.aws_secretsmanager.Secret(this, 'Secret', {
+    secretObjectValue: {
+      database: cdk.SecretValue.unsafePlainText("database-address"),
+      username: cdk.SecretValue.unsafePlainText("postgres"),
+      password: cdk.SecretValue.unsafePlainText("sakila"),
+    }
+  });
+
   // Instantiate Fargate Service with just cluster and image and port
   const fargateService = new cdk.aws_ecs_patterns.ApplicationLoadBalancedFargateService(this, 'securityplayground-service', {
     cluster,
@@ -134,11 +143,16 @@ constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
       image: cdk.aws_ecs.ContainerImage.fromRegistry("public.ecr.aws/m9h2b5e7/security-playground:110623"),
       containerPort: 8080,
       command: ["gunicorn", "-b", ":8080", "--workers", "2", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "app:app"],
+      secrets: {
+        "database": cdk.aws_ecs.Secret.fromSecretsManager(secret,'database'),
+        "username": cdk.aws_ecs.Secret.fromSecretsManager(secret,'username'),
+        "password": cdk.aws_ecs.Secret.fromSecretsManager(secret,'password'),
+      },
     },
     publicLoadBalancer: this.node.tryGetContext('public_load_balancer'),
     assignPublicIp: true,
     cpu: 1024,
-    memoryLimitMiB: 2048
+    memoryLimitMiB: 2048,
   });
 
   // Configure our health check URL
@@ -216,5 +230,36 @@ export class TGFargateStack extends cdk.Stack {
 
     // Add the Transform
     this.templateOptions.transforms = ["SysdigMacro"]
+  }
+}
+
+export class PostgresSakilaFargateStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
+    super(scope, id, props);
+  
+    const { vpc } = props;
+    const { cluster } = props;
+  
+    // Instantiate Fargate Service with just cluster and image and port
+    const fargateService = new cdk.aws_ecs_patterns.NetworkLoadBalancedFargateService(this, 'postgres-sakila-service', {
+      cluster,
+      taskImageOptions: {
+        image: cdk.aws_ecs.ContainerImage.fromRegistry("public.ecr.aws/m9h2b5e7/postgres-sakila:110623"),
+        containerPort: 5432,
+        environment: {
+          POSTGRES_PASSWORD: "sakila",
+        },
+      },
+      assignPublicIp: true,
+      cpu: 1024,
+      memoryLimitMiB: 2048,
+      listenerPort: 5432,
+    });
+  
+    // Export the LB address
+    new cdk.CfnOutput(this, "PostgresNLBAddress", {
+      value: fargateService.loadBalancer.loadBalancerDnsName,
+      exportName: "PostgresNLBAddress",
+    });
   }
 }
