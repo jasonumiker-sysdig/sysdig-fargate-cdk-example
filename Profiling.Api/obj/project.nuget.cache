@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "dgSpecHash": "0B2bVTki5jg4+xKyUKeN5OjihGGiNaZWtliq0aiK9dinr6qY16RzW01aVTgNsTek7XPVqYydHqq9DUi5cYvP8g==",
+  "success": true,
+  "projectFilePath": "/Users/jasonumiker/temp/profiling-net6-api-on-aws-ecs-fargate-using-dotnet-monitor/src/Profiling.Api/Profiling.Api.csproj",
+  "expectedPackageFiles": [
+    "/Users/jasonumiker/.nuget/packages/microsoft.extensions.apidescription.server/3.0.0/microsoft.extensions.apidescription.server.3.0.0.nupkg.sha512",
+    "/Users/jasonumiker/.nuget/packages/microsoft.openapi/1.2.3/microsoft.openapi.1.2.3.nupkg.sha512",
+    "/Users/jasonumiker/.nuget/packages/swashbuckle.aspnetcore/6.2.3/swashbuckle.aspnetcore.6.2.3.nupkg.sha512",
+    "/Users/jasonumiker/.nuget/packages/swashbuckle.aspnetcore.swagger/6.2.3/swashbuckle.aspnetcore.swagger.6.2.3.nupkg.sha512",
+    "/Users/jasonumiker/.nuget/packages/swashbuckle.aspnetcore.swaggergen/6.2.3/swashbuckle.aspnetcore.swaggergen.6.2.3.nupkg.sha512",
+    "/Users/jasonumiker/.nuget/packages/swashbuckle.aspnetcore.swaggerui/6.2.3/swashbuckle.aspnetcore.swaggerui.6.2.3.nupkg.sha512",
+    "/Users/jasonumiker/.nuget/packages/microsoft.netcore.app.ref/6.0.11/microsoft.netcore.app.ref.6.0.11.nupkg.sha512",
+    "/Users/jasonumiker/.nuget/packages/microsoft.aspnetcore.app.ref/6.0.11/microsoft.aspnetcore.app.ref.6.0.11.nupkg.sha512",
+    "/Users/jasonumiker/.nuget/packages/microsoft.netcore.app.host.osx-arm64/6.0.11/microsoft.netcore.app.host.osx-arm64.6.0.11.nupkg.sha512"
+  ],
+  "logs": []
+}

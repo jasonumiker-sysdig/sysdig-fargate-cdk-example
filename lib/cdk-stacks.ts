@@ -2,6 +2,10 @@ import cdk = require('aws-cdk-lib');
 import * as cfninc from 'aws-cdk-lib/cloudformation-include';
 import { Construct } from 'constructs';
 import * as ecrdeploy from 'cdk-ecr-deployment';
+import { Capability, ContainerImage, FargateService, FargateTaskDefinition, LinuxParameters, LogDriver } from 'aws-cdk-lib/aws-ecs';
+import { Peer, Port, Protocol, SecurityGroup, SubnetType } from 'aws-cdk-lib/aws-ec2';
+import { ApplicationLoadBalancer, ApplicationProtocol, ApplicationProtocolVersion, ApplicationTargetGroup, ListenerAction, TargetType} from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+
 
 export class ECRStack extends cdk.Stack {
   public readonly repository: cdk.aws_ecr.Repository;
@@ -213,6 +217,247 @@ export class TGFargateStack extends cdk.Stack {
       resources: [sysdigLogGroup],
     })
     fargateTask.taskDefinition.addToExecutionRolePolicy(policyStatement)
+
+    // Add the Transform
+    this.templateOptions.transforms = ["SysdigMacro"]
+  }
+}
+
+export class ProfilingFargateStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
+    super(scope, id, props);
+  
+    const { vpc } = props;
+    const { cluster } = props;
+
+    // Create Public LB
+
+    const publicLBSecurityGroup = new SecurityGroup(this, "publicLBSecurityGroup", {
+      vpc: vpc,
+      allowAllOutbound: true,
+      description: "Security group for the public ALB"
+    })
+
+    publicLBSecurityGroup.addIngressRule(
+      Peer.anyIpv4(),
+      Port.tcp(80),
+      "Allow port 80 ingress traffic"
+    )
+
+    const publicLB = new ApplicationLoadBalancer(this, "publicLB", {
+      internetFacing: true,
+      vpc: vpc,
+      vpcSubnets: {onePerAz: true, subnetType: SubnetType.PUBLIC},
+      securityGroup: publicLBSecurityGroup
+    })
+
+    publicLB.addListener("publicLBListener", {
+      protocol: ApplicationProtocol.HTTP,
+      defaultAction: ListenerAction.fixedResponse(500)
+    })
+    
+    // Create Monitor LB
+
+    const monitorLBSecurityGroup = new SecurityGroup(this, "monitorLBSecurityGroup", {
+      vpc: vpc,
+      allowAllOutbound: true,
+      description: "Security group for the public ALB"
+    })
+
+    monitorLBSecurityGroup.addIngressRule(
+      Peer.anyIpv4(),
+      Port.tcp(52323),
+      "Allow port 52323 ingress traffic"
+    )
+
+    const monitorLB = new ApplicationLoadBalancer(this, "monitorLB", {
+      internetFacing: true,
+      vpc: vpc,
+      vpcSubnets: {onePerAz: true, subnetType: SubnetType.PUBLIC},
+      securityGroup: monitorLBSecurityGroup
+    })
+
+    monitorLB.addListener("monitorLBListener", {
+      protocol: ApplicationProtocol.HTTP,
+      port: 52323,
+      defaultAction: ListenerAction.fixedResponse(500)
+    })    
+  
+    // Create the ECS Fargate Task Defintion
+    const taskDefinition = new FargateTaskDefinition(this, 'TaskDef', {
+      cpu: 1024,
+      memoryLimitMiB: 2048
+    });
+
+    taskDefinition.addVolume({
+      name: "diagnostics"
+    })
+
+    taskDefinition.addVolume({
+      name: "dumps"
+    })    
+
+    const linuxParams = new LinuxParameters(this, "sys-ptrace-linux-params");
+    linuxParams.addCapabilities(Capability.SYS_PTRACE)
+
+    const containerapp = taskDefinition.addContainer("containerapp", {
+      cpu: 512,
+      memoryLimitMiB: 1024,
+      image: ContainerImage.fromRegistry('jasonumiker/profiling:latest'),
+      linuxParameters: linuxParams,
+      environment: {
+        "DOTNET_Diagnostic_Ports": "/diag/port,nosuspend,connect"
+      },
+      logging: LogDriver.awsLogs({streamPrefix: "ecs"}),
+      portMappings: [{containerPort: 80}],
+      entryPoint: ["dotnet", "Profiling.Api.dll"],
+      containerName: "container-app"
+    })
+
+    containerapp.addMountPoints(
+      {
+        containerPath: '/diag',
+        sourceVolume: 'diagnostics',
+        readOnly: false
+      },
+      {
+        containerPath: '/dumps',
+        sourceVolume: 'dumps',
+        readOnly: false
+      }
+    )
+
+    const dotnetmonitor = taskDefinition.addContainer("dotnet-monitor", {
+      cpu: 256,
+      memoryLimitMiB: 512,
+      image: ContainerImage.fromRegistry('mcr.microsoft.com/dotnet/monitor:6'),
+      environment: {
+        "DOTNETMONITOR_DiagnosticPort__ConnectionMode": "Listen",
+        "DOTNETMONITOR_DiagnosticPort__EndpointName": "/diag/port",
+        "DOTNETMONITOR_Urls": "http://+:52323",
+        "DOTNETMONITOR_Storage__DumpTempFolder": "/dumps"
+      },
+      command: ["--no-auth"],
+      portMappings: [{containerPort: 52323}]
+    })
+
+    dotnetmonitor.addMountPoints(
+      {
+        containerPath: '/diag',
+        sourceVolume: 'diagnostics',
+        readOnly: false
+      },
+      {
+        containerPath: '/dumps',
+        sourceVolume: 'dumps',
+        readOnly: false
+      }
+    )
+
+    // Create the ECS Fargate Service
+
+    const sg = new SecurityGroup(this, "sg", {
+      description: "Allow traffic from ALB to app",
+      allowAllOutbound: true,
+      vpc: vpc
+    })
+
+    sg.connections.allowFrom(publicLB.connections, new Port(
+      {
+        fromPort: 80,
+        toPort: 80,
+        protocol: Protocol.TCP,
+        stringRepresentation: "80"
+      }
+    ))
+
+    sg.connections.allowFrom(publicLB.connections, new Port(
+      {
+        fromPort: 52323,
+        toPort: 52323,
+        protocol: Protocol.TCP,
+        stringRepresentation: "52323"
+      }
+    ))
+
+    // Add the permissions for the Sysdig CW Logs to the Task Execution Role
+    const sysdigLogGroup = "arn:aws:logs:" + this.region + ":" + this.account + ":log-group:" + cdk.Fn.importValue("SysdigLogGroup") + ":*"
+    const policyStatement = new cdk.aws_iam.PolicyStatement({
+      actions: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+      resources: [sysdigLogGroup],
+    })
+    taskDefinition.addToExecutionRolePolicy(policyStatement)
+    
+    const service = new FargateService(this, "service", {
+      cluster: cluster,
+      taskDefinition: taskDefinition,
+      desiredCount: 1,
+      minHealthyPercent: 100,
+      maxHealthyPercent: 200,
+      assignPublicIp: true,
+      vpcSubnets: {subnets: vpc.publicSubnets},
+      securityGroups: [sg]
+    })
+
+    // Create a target group for publicLB and attach it
+    const target = service.loadBalancerTarget({
+      containerPort: 80,
+      containerName: "container-app",
+      protocol: cdk.aws_ecs.Protocol.TCP
+    })
+
+    const targetGroup = new ApplicationTargetGroup(this, "tg-app-ecs-profiling-dotnet-demo", {
+      vpc: vpc,
+      targetType: TargetType.IP,
+      protocolVersion: ApplicationProtocolVersion.HTTP1,
+      healthCheck: {
+        protocol: cdk.aws_elasticloadbalancingv2.Protocol.HTTP,
+        healthyThresholdCount: 3,
+        path: "/health",
+        port: "80",
+        interval: cdk.Duration.millis(10000),
+        timeout: cdk.Duration.millis(8000),
+        unhealthyThresholdCount: 10,
+        healthyHttpCodes: "200"
+      },
+      port: 80,
+      targets: [target]
+    })
+
+    publicLB.listeners[0].addTargetGroups("app-listener", {
+      targetGroups: [targetGroup]
+    })
+
+    // Create a target group for monitorLB and attach it
+
+    const targetMonitor = service.loadBalancerTarget({
+      containerPort: 52323,
+      containerName: "dotnet-monitor",
+      protocol: cdk.aws_ecs.Protocol.TCP
+    })
+
+    const monitorGroup = new ApplicationTargetGroup(this, "tg-monitor-ecs-profiling-dotnet-demo", {
+      vpc: vpc,
+      targetType: TargetType.IP,
+      protocolVersion: ApplicationProtocolVersion.HTTP1,
+      protocol: ApplicationProtocol.HTTP,
+      healthCheck: {
+        protocol: cdk.aws_elasticloadbalancingv2.Protocol.HTTP,
+        healthyThresholdCount: 3,
+        path: "/info",
+        port: "52323",
+        interval: cdk.Duration.millis(10000),
+        timeout: cdk.Duration.millis(8000),
+        unhealthyThresholdCount: 10,
+        healthyHttpCodes: "200"
+      },
+      port: 52323,
+      targets: [targetMonitor]
+    })
+
+    monitorLB.listeners[0].addTargetGroups("monitor-listener", {
+      targetGroups: [monitorGroup]
+    })
 
     // Add the Transform
     this.templateOptions.transforms = ["SysdigMacro"]
