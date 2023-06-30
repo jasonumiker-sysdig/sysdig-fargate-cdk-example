@@ -1,4 +1,4 @@
-# Edited this to add Exports for MacroName and LogGroup required for CDK automation
+# Edited this to add Exports for MacroName, LogGroup required for CDK automation and increased the function timeout to 10s
 AWSTemplateFormatVersion: 2010-09-09
 
 Description: Sysdig Serverless Instrumentation Stack (ReleaseVersion:4.1.2, ServerlessAgent:4.1.2-rc, AgentBuild:4.1.2-rc5, GitRev:1161bbf)
@@ -163,6 +163,7 @@ Resources:
           KILT_DEFINITION: !If [IsKiltCustomDefinition, !FindInMap [Kilt, Customization, Definition], !Ref AWS::NoValue]
           KILT_DEFINITION_TYPE: !If [IsKiltCustomDefinition, !FindInMap [Kilt, Customization, DefinitionType], !Ref AWS::NoValue]
           KILT_RECIPE_CONFIG: !If [IsKiltCustomRecipeConfiguration, !FindInMap [Kilt, Customization, RecipeConfiguration], !Ref AWS::NoValue]
+      Timeout: 10
 
   ServerlessPatcherMacro:
     Type: AWS::CloudFormation::Macro

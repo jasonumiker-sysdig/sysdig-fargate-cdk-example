@@ -284,7 +284,7 @@ export class ProfilingFargateStack extends cdk.Stack {
     })    
   
     // Create the ECS Fargate Task Defintion
-    const taskDefinition = new FargateTaskDefinition(this, 'TaskDef', {
+    const taskDefinition = new FargateTaskDefinition(this, 'task-definition-ecs-profiling-dotnet-demo', {
       cpu: 1024,
       memoryLimitMiB: 2048
     });
@@ -300,7 +300,7 @@ export class ProfilingFargateStack extends cdk.Stack {
     const linuxParams = new LinuxParameters(this, "sys-ptrace-linux-params");
     linuxParams.addCapabilities(Capability.SYS_PTRACE)
 
-    const containerapp = taskDefinition.addContainer("containerapp", {
+    const containerapp = taskDefinition.addContainer("container-app", {
       cpu: 512,
       memoryLimitMiB: 1024,
       image: ContainerImage.fromRegistry('jasonumiker/profiling:latest'),
@@ -337,8 +337,9 @@ export class ProfilingFargateStack extends cdk.Stack {
         "DOTNETMONITOR_Urls": "http://+:52323",
         "DOTNETMONITOR_Storage__DumpTempFolder": "/dumps"
       },
+      portMappings: [{containerPort: 52323}],
+      entryPoint: [ "dotnet-monitor", "collect", "--urls", "https://+:52323", "--metricUrls", "http://+:52325" ],
       command: ["--no-auth"],
-      portMappings: [{containerPort: 52323}]
     })
 
     dotnetmonitor.addMountPoints(
@@ -389,14 +390,15 @@ export class ProfilingFargateStack extends cdk.Stack {
     taskDefinition.addToExecutionRolePolicy(policyStatement)
     
     const service = new FargateService(this, "service", {
-      cluster: cluster,
       taskDefinition: taskDefinition,
+      cluster: cluster,
       desiredCount: 1,
       minHealthyPercent: 100,
       maxHealthyPercent: 200,
       assignPublicIp: true,
       vpcSubnets: {subnets: vpc.publicSubnets},
-      securityGroups: [sg]
+      securityGroups: [sg],
+      serviceName: "service-ecs-profiling-dotnet-demo"
     })
 
     // Create a target group for publicLB and attach it
