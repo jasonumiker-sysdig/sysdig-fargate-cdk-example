@@ -306,7 +306,7 @@ export class ProfilingFargateStack extends cdk.Stack {
       image: ContainerImage.fromRegistry('jasonumiker/profiling:latest'),
       linuxParameters: linuxParams,
       environment: {
-        "DOTNET_Diagnostic_Ports": "/diag/port,nosuspend,connect"
+        "DOTNET_DiagnosticPorts": "/diag/dotnet-monitor.sock,nosuspend,connect"
       },
       logging: LogDriver.awsLogs({streamPrefix: "ecs"}),
       portMappings: [{containerPort: 80}],
@@ -333,7 +333,7 @@ export class ProfilingFargateStack extends cdk.Stack {
       image: ContainerImage.fromRegistry('mcr.microsoft.com/dotnet/monitor:6'),
       environment: {
         "DOTNETMONITOR_DiagnosticPort__ConnectionMode": "Listen",
-        "DOTNETMONITOR_DiagnosticPort__EndpointName": "/diag/port",
+        "DOTNETMONITOR_DiagnosticPort__EndpointName": "/diag/dotnet-monitor.sock",
         "DOTNETMONITOR_Urls": "http://+:52323",
         "DOTNETMONITOR_Storage__DumpTempFolder": "/dumps"
       },
