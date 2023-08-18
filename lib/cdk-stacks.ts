@@ -140,7 +140,7 @@ constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
   const fargateService = new cdk.aws_ecs_patterns.ApplicationLoadBalancedFargateService(this, 'securityplayground-service', {
     cluster,
     taskImageOptions: {
-      image: cdk.aws_ecs.ContainerImage.fromRegistry("public.ecr.aws/m9h2b5e7/security-playground:110623"),
+      image: cdk.aws_ecs.ContainerImage.fromRegistry("public.ecr.aws/m9h2b5e7/security-playground:270723"),
       containerPort: 8080,
       command: ["gunicorn", "-b", ":8080", "--workers", "2", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "app:app"],
       secrets: {
