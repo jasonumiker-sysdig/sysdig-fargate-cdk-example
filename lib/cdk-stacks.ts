@@ -232,34 +232,3 @@ export class TGFargateStack extends cdk.Stack {
     this.templateOptions.transforms = ["SysdigMacro"]
   }
 }
-
-export class PostgresSakilaFargateStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
-    super(scope, id, props);
-  
-    const { vpc } = props;
-    const { cluster } = props;
-  
-    // Instantiate Fargate Service with just cluster and image and port
-    const fargateService = new cdk.aws_ecs_patterns.NetworkLoadBalancedFargateService(this, 'postgres-sakila-service', {
-      cluster,
-      taskImageOptions: {
-        image: cdk.aws_ecs.ContainerImage.fromRegistry("public.ecr.aws/m9h2b5e7/postgres-sakila:110623"),
-        containerPort: 5432,
-        environment: {
-          POSTGRES_PASSWORD: "sakila",
-        },
-      },
-      assignPublicIp: true,
-      cpu: 1024,
-      memoryLimitMiB: 2048,
-      listenerPort: 5432,
-    });
-  
-    // Export the LB address
-    new cdk.CfnOutput(this, "PostgresNLBAddress", {
-      value: fargateService.loadBalancer.loadBalancerDnsName,
-      exportName: "PostgresNLBAddress",
-    });
-  }
-}
