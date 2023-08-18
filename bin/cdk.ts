@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import cdk = require('aws-cdk-lib');
-import { PostgresSakilaFargateStack, VPCStack } from '../lib/cdk-stacks';
+import { VPCStack } from '../lib/cdk-stacks';
 import { ClusterStack } from '../lib/cdk-stacks';
 import { SecurityPlaygroundFargateStack } from '../lib/cdk-stacks';
 import { OrchestrationStack } from '../lib/cdk-stacks';
@@ -18,11 +18,9 @@ const ecrStack = new ECRStack(app, 'FargateECRStack', {env: env});
 const instrumentationStack = new InstrumentationStack(app, 'FargateInstrumentationStack', {repository: ecrStack.repository, env: env})
 const securityPlaygroundStack = new SecurityPlaygroundFargateStack(app, 'FargateSecurityPlaygroundStack', {vpc: vpcStack.vpc, cluster: clusterStack.cluster, env: env})
 const tgStack = new TGFargateStack(app, 'FargateTGStack', {vpc: vpcStack.vpc, cluster: clusterStack.cluster, env: env})
-const postgresStack = new PostgresSakilaFargateStack(app, 'FargatePostgresStack', {vpc: vpcStack.vpc, cluster: clusterStack.cluster, env: env})
 clusterStack.addDependency(vpcStack)
 orchestrationStack.addDependency(clusterStack)
 instrumentationStack.addDependency(orchestrationStack)
 instrumentationStack.addDependency(ecrStack)
 securityPlaygroundStack.addDependency(instrumentationStack)
 tgStack.addDependency(instrumentationStack)
-postgresStack.addDependency(instrumentationStack)
