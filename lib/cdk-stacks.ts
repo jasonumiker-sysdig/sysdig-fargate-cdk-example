@@ -18,8 +18,8 @@ export class ECRStack extends cdk.Stack {
 
     // Copy our image from quay to our new ECR
     new ecrdeploy.ECRDeployment(this, 'DeployDockerImage', {
-      src: new ecrdeploy.DockerImageName('quay.io/sysdig/serverless-patcher:4.2.0'),
-      dest: new ecrdeploy.DockerImageName(`${this.repository.repositoryUri}:4.2.0`),
+      src: new ecrdeploy.DockerImageName('quay.io/sysdig/serverless-patcher:4.3.1'),
+      dest: new ecrdeploy.DockerImageName(`${this.repository.repositoryUri}:4.3.1`),
     });
   }
 }
@@ -87,9 +87,9 @@ export class OrchestrationStack extends cdk.Stack {
         SubnetB: vpc.publicSubnets.at(1)?.subnetId,
         NetworkType: "Public Subnet",
         SysdigAgentTags: "",
-        SysdigOrchestratorAgentImage: "quay.io/sysdig/orchestrator-agent:4.2.0",
+        SysdigOrchestratorAgentImage: "quay.io/sysdig/orchestrator-agent:4.3.1",
         SysdigCheckCollectorCertificate: "true",
-        SysdigOrchestratorAgentPort: "6667"
+        SysdigOrchestratorAgentPort: "6667",
       },
     });
   }
@@ -113,8 +113,8 @@ export class InstrumentationStack extends cdk.Stack {
         SysdigOrchestratorAgentPort: cdk.Fn.importValue('SysdigFargateOrchestrationPort'),
         SysdigMacroName: "SysdigMacro",
         SysdigInstrumentationLogLevel: "info",
-        SysdigServerlessPatcherImage: repository.repositoryUri + ":4.2.0",
-        SysdigWorkloadAgentImage: "quay.io/sysdig/workload-agent:4.2.0",
+        SysdigServerlessPatcherImage: repository.repositoryUri + ":4.3.1",
+        SysdigWorkloadAgentImage: "quay.io/sysdig/workload-agent:4.3.1",
       },
     });
   }
