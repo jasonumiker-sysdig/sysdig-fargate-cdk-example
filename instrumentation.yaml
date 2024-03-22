@@ -1,7 +1,7 @@
 # Edited this to add Exports for MacroName and LogGroup required for CDK automation
 AWSTemplateFormatVersion: 2010-09-09
 
-Description: Sysdig Serverless Instrumentation Stack (ReleaseVersion:4.3.1,ServerlessAgentBuild:4.3.1-rc2,AgentBuild:4.3.1-rc2,GitRev:d4d1cbd)
+Description: Sysdig Serverless Instrumentation Stack (ReleaseVersion:4.3.2,ServerlessAgentBuild:4.3.2-rc3,AgentBuild:4.3.2-rc3,GitRev:d4d1cbd)
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -67,12 +67,12 @@ Parameters:
   SysdigServerlessPatcherImage:
     Type: String
     Description: Will patch your template to install the Sysdig Workload Agent - Must be hosted on an ECR private registry
-    Default: "quay.io/sysdig/serverless-patcher:4.3.1"
+    Default: "quay.io/sysdig/serverless-patcher:4.3.2"
 
   SysdigWorkloadAgentImage:
     Type: String
     Description: The Sysdig Agent that will secure your workload
-    Default: "quay.io/sysdig/workload-agent:4.3.1"
+    Default: "quay.io/sysdig/workload-agent:4.3.2"
 
 Mappings:
   Sysdig:

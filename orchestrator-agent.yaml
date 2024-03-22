@@ -1,7 +1,7 @@
 # Edited this to add Exports for OrchestratorHost and OrchestratorPort required for CDK automation
 AWSTemplateFormatVersion: 2010-09-09
 
-Description: Sysdig Serverless Orchestrator Agent (ReleaseVersion:4.2.0,ServerlessAgentBuild:4.2.0-rc,AgentBuild:4.2.0-rc17,GitRev:218b4dd)
+Description: Sysdig Serverless Orchestrator Agent (ReleaseVersion:4.3.2, ServerlessAgentBuild:4.3.2-rc3, AgentBuild:4.3.2-rc3, GitRev:36d94ce)
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -26,6 +26,14 @@ Metadata:
       - SysdigOrchestratorAgentImage
       - SysdigCheckCollectorCertificate
       - SysdigOrchestratorAgentPort
+    - Label:
+        default: Autoscaling
+      Parameters:
+        - TargetMetric
+        - TargetValue
+        - MaxCapacity
+        - ScaleInCooldown
+        - ScaleOutCooldown
     ParameterLabels:
       # Sysdig Settings
       SysdigAccessKey:
@@ -52,6 +60,17 @@ Metadata:
         default: Check Collector SSL Certificate
       SysdigOrchestratorAgentPort:
         default: Sysdig Orchestrator Agent Port
+      # Autoscaling
+      TargetMetric:
+        default: Target metric
+      TargetValue:
+        default: Target value
+      MaxCapacity:
+        default: Maximum capacity
+      ScaleInCooldown:
+        default: Scale-in cooldown (seconds)
+      ScaleOutCooldown:
+        default: Scale-out cooldown (seconds)
 
 Mappings:
   # Orchestrator - Upload custom CA certificates
@@ -127,7 +146,7 @@ Parameters:
 
   SysdigOrchestratorAgentImage:
     Type: String
-    Default: quay.io/sysdig/orchestrator-agent:4.2.0
+    Default: quay.io/sysdig/orchestrator-agent:4.3.2
 
   SysdigCheckCollectorCertificate:
     Type: String
@@ -142,6 +161,43 @@ Parameters:
     Default: 6667
     AllowedPattern: ^[0-9]+$
     ConstraintDescription: Sysdig Orchestrator Agent Port must be a number
+
+  # Autoscaling
+  TargetMetric:
+    Type: String
+    Default: "Disabled"
+    AllowedValues:
+      - "Disabled"
+      - "ECSServiceAverageCPUUtilization"
+      - "ECSServiceAverageMemoryUtilization"
+
+  TargetValue:
+    Type: String
+    Description: "The target value for the chosen metric"
+    AllowedPattern: ^[0-9]+$
+    ConstraintDescription: "The autoscaling target value must be a number"
+    Default: 0
+
+  MaxCapacity:
+    Type: String
+    Description: "The maximum capacity that you plan to scale out to"
+    AllowedPattern: ^[0-9]+$
+    ConstraintDescription: "The autoscaling maximum capacity must be a number"
+    Default: 0
+
+  ScaleInCooldown:
+    Type: String
+    AllowedPattern: ^[0-9]+$
+    Description: "The scaling policy will not decrease the capacity until previous scale-in cooldown period has expired"
+    ConstraintDescription: "The autoscaling scale-in cooldown must be a number"
+    Default: 0
+
+  ScaleOutCooldown:
+    Type: String
+    AllowedPattern: ^[0-9]+$
+    Description: "The scaling policy will not increase the capacity again unless either a larger scale out is triggered or the cooldown period ends"
+    ConstraintDescription: "The autoscaling scale-out cooldown must be a number"
+    Default: 0
 
 Conditions:
     IsPublicSubnet: !Equals [!Ref NetworkType, "Public Subnet"]
@@ -169,6 +225,8 @@ Conditions:
       - !Not [ Condition: IsProxyPasswordSecret ]
 
     DoOverrideContainerInsights: !Not [ !Equals [ !FindInMap [ Cluster, Configuration, ContainerInsights ], "" ] ]
+
+    EnableAutoScaling: !Not [ !Equals [ !Ref TargetMetric, "Disabled"] ]
 
 Outputs:
   OrchestratorHost:
@@ -450,3 +508,45 @@ Resources:
       Tags:
         - Key: application
           Value: sysdig
+
+  AutoScalingRole:
+    Condition: EnableAutoScaling
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole'
+
+  ECSScalableTarget:
+    Condition: EnableAutoScaling
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !Ref MaxCapacity
+      MinCapacity: "1"
+      RoleARN: !GetAtt AutoScalingRole.Arn
+      ServiceNamespace: ecs
+      ScalableDimension: 'ecs:service:DesiredCount'
+      ResourceId: !Join
+        - /
+        - - service
+          - !Ref SysdigAgentCluster
+          - !GetAtt SysdigOrchestratorAgentService.Name
+
+  ServiceScalingPolicyCPU:
+    Condition: EnableAutoScaling
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub "${AWS::StackName}-autoscaling"
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ECSScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: !Ref TargetValue
+        ScaleInCooldown: !Ref ScaleInCooldown
+        ScaleOutCooldown: !Ref ScaleOutCooldown
+        PredefinedMetricSpecification:
+          PredefinedMetricType: !Ref TargetMetric
