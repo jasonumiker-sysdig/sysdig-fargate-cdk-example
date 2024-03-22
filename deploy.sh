@@ -1,2 +1,2 @@
 npm install
-npx cdk deploy FargateSecurityPlaygroundStack --require-approval
+npx cdk deploy FargateSecurityPlaygroundStack --require-approval never
