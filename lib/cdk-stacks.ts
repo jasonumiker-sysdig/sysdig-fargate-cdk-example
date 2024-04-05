@@ -13,7 +13,7 @@ export class ECRStack extends cdk.Stack {
     this.repository = new cdk.aws_ecr.Repository(this, 'ECRRepository', {
       repositoryName: "serverless-patcher",
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteImages: true,
+      emptyOnDelete: true
     });
 
     // Copy our image from quay to our new ECR
@@ -127,27 +127,13 @@ constructor(scope: Construct, id: string, props: FargateServiceStackProps) {
   const { vpc } = props;
   const { cluster } = props;
 
-  // Create a secret in Secrets Manager (to ex-fil)
-  const secret = new cdk.aws_secretsmanager.Secret(this, 'Secret', {
-    secretObjectValue: {
-      database: cdk.SecretValue.unsafePlainText("database-address"),
-      username: cdk.SecretValue.unsafePlainText("postgres"),
-      password: cdk.SecretValue.unsafePlainText("sakila"),
-    }
-  });
-
   // Instantiate Fargate Service with just cluster and image and port
   const fargateService = new cdk.aws_ecs_patterns.ApplicationLoadBalancedFargateService(this, 'securityplayground-service', {
     cluster,
     taskImageOptions: {
-      image: cdk.aws_ecs.ContainerImage.fromRegistry("public.ecr.aws/m9h2b5e7/security-playground:270723"),
+      image: cdk.aws_ecs.ContainerImage.fromRegistry("public.ecr.aws/m9h2b5e7/security-playground:latest"),
       containerPort: 8080,
       command: ["gunicorn", "-b", ":8080", "--workers", "2", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "app:app"],
-      secrets: {
-        "database": cdk.aws_ecs.Secret.fromSecretsManager(secret,'database'),
-        "username": cdk.aws_ecs.Secret.fromSecretsManager(secret,'username'),
-        "password": cdk.aws_ecs.Secret.fromSecretsManager(secret,'password'),
-      },
     },
     publicLoadBalancer: this.node.tryGetContext('public_load_balancer'),
     assignPublicIp: true,
