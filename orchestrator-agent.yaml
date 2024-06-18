@@ -1,7 +1,7 @@
 # Edited this to add Exports for OrchestratorHost and OrchestratorPort required for CDK automation
 AWSTemplateFormatVersion: 2010-09-09
 
-Description: Sysdig Serverless Orchestrator Agent (ReleaseVersion:4.3.2, ServerlessAgentBuild:4.3.2-rc3, AgentBuild:4.3.2-rc3, GitRev:36d94ce)
+Description: Sysdig Serverless Orchestrator Agent (ReleaseVersion:5.0.1, ServerlessAgentBuild:2115, AgentBuild:5.0.1-rc4, GitRev:14024c2)
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -146,7 +146,7 @@ Parameters:
 
   SysdigOrchestratorAgentImage:
     Type: String
-    Default: quay.io/sysdig/orchestrator-agent:4.3.2
+    Default: quay.io/sysdig/orchestrator-agent:5.0.1
 
   SysdigCheckCollectorCertificate:
     Type: String
@@ -308,7 +308,7 @@ Resources:
   SysdigOrchestratorAgentSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow agentino to connect
+      GroupDescription: Allow workload-agent to connect
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp

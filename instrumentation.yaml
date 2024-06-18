@@ -1,7 +1,7 @@
 # Edited this to add Exports for MacroName and LogGroup required for CDK automation
 AWSTemplateFormatVersion: 2010-09-09
 
-Description: Sysdig Serverless Instrumentation Stack (ReleaseVersion:4.3.2,ServerlessAgentBuild:4.3.2-rc3,AgentBuild:4.3.2-rc3,GitRev:d4d1cbd)
+Description: Sysdig Serverless Instrumentation Stack (ReleaseVersion:5.0.1, ServerlessAgentBuild:2115, AgentBuild:5.0.1-rc4, GitRev:14024c2)
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -18,6 +18,14 @@ Metadata:
         - SysdigInstrumentationLogLevel
         - SysdigServerlessPatcherImage
         - SysdigWorkloadAgentImage
+    - Label:
+        default: Instrumentation Resource Allocation
+      Parameters:
+        - SysdigPriority
+        - SysdigSidecarEssential
+        - SysdigSidecarCpu
+        - SysdigSidecarMemoryLimit
+        - SysdigSidecarMemoryReservation
     ParameterLabels:
       # Orchestrator Settings
       SysdigOrchestratorAgentHost:
@@ -33,6 +41,17 @@ Metadata:
         default: Sysdig Serverless Patcher Image
       SysdigWorkloadAgentImage:
         default: Sysdig Workload Agent Image
+      # Instrumentation Resource Allocation
+      SysdigPriority:
+        default: Instrumentation priority
+      SysdigSidecarEssential:
+        default: Sidecar Essential Flag
+      SysdigSidecarCpu:
+        default: Sidecar CPU Units
+      SysdigSidecarMemoryLimit:
+        default: Sidecar Memory Limit
+      SysdigSidecarMemoryReservation:
+        default: Sidecar Memory Reservation
 
 Parameters:
   # Orchestrator Agent Settings
@@ -67,12 +86,50 @@ Parameters:
   SysdigServerlessPatcherImage:
     Type: String
     Description: Will patch your template to install the Sysdig Workload Agent - Must be hosted on an ECR private registry
-    Default: "quay.io/sysdig/serverless-patcher:4.3.2"
+    Default: "quay.io/sysdig/serverless-patcher:5.0.1"
 
   SysdigWorkloadAgentImage:
     Type: String
     Description: The Sysdig Agent that will secure your workload
-    Default: "quay.io/sysdig/workload-agent:4.3.2"
+    Default: "quay.io/sysdig/workload-agent:5.0.1"
+
+  SysdigPriority:
+    Type: String
+    Description: "Instrumentation priority. If set to security, the instrumentation will prevent an unsecured workload from running."
+    Default: "availability"
+    AllowedValues:
+      - "security"
+      - "availability"
+
+  SysdigSidecarEssential:
+    Type: String
+    Description: "If true, the sidecar container will be marked as essential. If false, the sidecar container will be marked as non-essential. If set to auto, will follow the selected priority (true for security, false for availability)"
+    Default: "auto"
+    AllowedValues:
+      - "auto"
+      - "true"
+      - "false"
+
+  SysdigSidecarCpu:
+    Type: String
+    Description: "The number of cpu units to reserve for the sidecar container. This is optional, but if specified, it must be a positive integer."
+    Default: ""
+    AllowedPattern: ^[0-9]*$
+    ConstraintDescription: Sidecar CPU can include only numbers
+
+  SysdigSidecarMemoryLimit:
+    Type: String
+    Description: "The amount of memory (in MiB) to limit the sidecar container to. This is optional, but if specified, it must be a positive integer."
+    Default: ""
+    AllowedPattern: ^[0-9]*$
+    ConstraintDescription: Sidecar Memory Limit can include only numbers
+
+  SysdigSidecarMemoryReservation:
+    Type: String
+    Description: "The amount of memory (in MiB) to reserve for the sidecar container. This is optional, but if specified, it must be a positive integer."
+    Default: ""
+    AllowedPattern: ^[0-9]*$
+    ConstraintDescription: Sidecar Memory Reservation can include only numbers
 
 Mappings:
   Sysdig:
@@ -82,6 +139,7 @@ Mappings:
       SysdigCollectorPort: ""
     Agent:
       NiceValueIncrement: ""
+      SidecarMode: ""
   Kilt:
     Mode:
       OptIn: ""
@@ -101,6 +159,9 @@ Conditions:
     - !Not [!Equals [!FindInMap [Kilt, Customization, DefinitionType], ""]]
   IsKiltCustomRecipeConfiguration: !Not [ !Equals [!FindInMap [Kilt, Customization, RecipeConfiguration], ""]]
   DoSetNiceValueIncrement: !Not [ !Equals [!FindInMap [Sysdig, Agent, NiceValueIncrement], ""]]
+  DoSetSidecarMode: !Not [ !Equals [!FindInMap [Sysdig, Agent, SidecarMode], ""]]
+  IsSidecarEssentialAuto: !Equals [!Ref SysdigSidecarEssential, "auto"]
+  IsPrioritySecurity: !Equals [!Ref SysdigPriority, "security"]
 
 Outputs:
   SysdigTransformationMacro:
@@ -150,6 +211,7 @@ Resources:
           # Sysdig Instrumentation
           SYSDIG_WORKLOAD_AGENT_IMAGE: !Ref SysdigWorkloadAgentImage
           SYSDIG_LOGGING: !Ref SysdigInstrumentationLogLevel
+          SYSDIG_PRIORITY: !Ref SysdigPriority
           KILT_LOG_GROUP: !Ref SysdigLogGroup
           # Sysdig Collector
           SYSDIG_ACCESS_KEY: !If [IsSysdigDirectConnection, !FindInMap [Sysdig, Collector, SysdigAccessKey], !Ref AWS::NoValue]
@@ -157,12 +219,18 @@ Resources:
           SYSDIG_COLLECTOR_PORT: !If [IsSysdigDirectConnection, !FindInMap [Sysdig, Collector, SysdigCollectorPort], !Ref AWS::NoValue]
           # Sysdig Agent Nice Value Increment
           SYSDIG_AGENT_NICE_VALUE_INCREMENT: !If [DoSetNiceValueIncrement, !FindInMap [Sysdig, Agent, NiceValueIncrement], !Ref AWS::NoValue]
+          # Sidecar mode
+          SYSDIG_SIDECAR_MODE: !If [DoSetSidecarMode, !FindInMap [Sysdig, Agent, SidecarMode], "auto"]
           # Kilt OptIn Mode
           KILT_OPT_IN: !If [IsKiltModeOptIn, "YES", !Ref AWS::NoValue]
           # Kilt Definition/Recipe Customization
           KILT_DEFINITION: !If [IsKiltCustomDefinition, !FindInMap [Kilt, Customization, Definition], !Ref AWS::NoValue]
           KILT_DEFINITION_TYPE: !If [IsKiltCustomDefinition, !FindInMap [Kilt, Customization, DefinitionType], !Ref AWS::NoValue]
           KILT_RECIPE_CONFIG: !If [IsKiltCustomRecipeConfiguration, !FindInMap [Kilt, Customization, RecipeConfiguration], !Ref AWS::NoValue]
+          KILT_SIDECAR_ESSENTIAL: !If [ IsSidecarEssentialAuto, !If [ IsPrioritySecurity, "true", "false"], !Ref SysdigSidecarEssential ]
+          KILT_SIDECAR_CPU: !Ref SysdigSidecarCpu
+          KILT_SIDECAR_MEMORY_LIMIT: !Ref SysdigSidecarMemoryLimit
+          KILT_SIDECAR_MEMORY_RESERVATION: !Ref SysdigSidecarMemoryReservation
 
   ServerlessPatcherMacro:
     Type: AWS::CloudFormation::Macro

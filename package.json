@@ -13,18 +13,18 @@
   "devDependencies": {
     "@aws-cdk/assert": "2.68.0",
     "@types/jest": "29.5.12",
-    "@types/node": "20.12.4",
-    "aws-cdk": "2.135.0",
+    "@types/node": "20.14.4",
+    "aws-cdk": "2.146.0",
     "jest": "29.7.0",
-    "ts-jest": "29.1.2",
+    "ts-jest": "29.1.5",
     "ts-node": "10.9.2",
-    "typescript": "5.4.4"
+    "typescript": "5.4.5"
   },
   "dependencies": {
-    "aws-cdk-lib": "2.135.0",
-    "cdk-ecr-deployment": "3.0.43",
+    "aws-cdk-lib": "2.146.0",
+    "cdk-ecr-deployment": "3.0.67",
     "constructs": "10.3.0",
-    "npm-check-updates": "^16.14.18",
+    "npm-check-updates": "^16.14.20",
     "source-map-support": "0.5.21"
   }
 }
